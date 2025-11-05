@@ -1,0 +1,297 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Application Business Logic Specification (V2 - DDD)",
+  "description": "A schema that extends OpenAPI 3.0 to include definitions for business logic, services, and persistence, with explicit DDD (Domain-Driven Design) concepts.",
+  "type": "object",
+  "allOf": [
+    { "$ref": "https://spec.openapis.org/oas/v3.0/schema/2021-09-28" }
+  ],
+  "properties": {
+    "x-ddd": {
+      "$ref": "#/definitions/DDDInfo"
+    },
+    "components": {
+      "properties": {
+        "schemas": {
+          "additionalProperties": {
+            "properties": {
+              "x-persistence": {
+                "$ref": "#/definitions/PersistenceInfo"
+              },
+              "x-ddd": {
+                "$ref": "#/definitions/DDDSchemaInfo"
+              },
+              "properties": {
+                "additionalProperties": {
+                  "properties": {
+                    "x-persistence": {
+                      "$ref": "#/definitions/FieldPersistenceInfo"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "x-services": {
+      "type": "object",
+      "description": "Container for Application Service definitions, which orchestrate business logic.",
+      "additionalProperties": {
+        "$ref": "#/definitions/Service"
+      }
+    }
+  },
+  "definitions": {
+    "DDDInfo": {
+      "type": "object",
+      "description": "Top-level DDD metadata.",
+      "properties": {
+        "boundedContext": {
+          "type": "string",
+          "description": "The name of the Bounded Context this specification applies to."
+        }
+      }
+    },
+    "DDDSchemaInfo": {
+      "type": "object",
+      "description": "Schema-level DDD metadata.",
+      "properties": {
+        "isValueObject": {
+          "type": "boolean",
+          "description": "Indicates this schema defines a Value Object (defined by attributes, not ID)."
+        }
+      }
+    },
+    "PersistenceInfo": {
+      "type": "object",
+      "description": "Entity-level persistence information.",
+      "properties": {
+        "isEntity": { "type": "boolean", "const": true },
+        "tableName": { "type": "string", "description": "The name of the database table." },
+        "isAggregateRoot": {
+          "type": "boolean",
+          "description": "DDD: Indicates if this entity is the root of an Aggregate."
+        }
+      },
+      "required": ["isEntity", "tableName"]
+    },
+    "FieldPersistenceInfo": {
+      "type": "object",
+      "description": "Field-level persistence information.",
+      "properties": {
+        "isPrimaryKey": { "type": "boolean" },
+        "columnName": { "type": "string" },
+        "dataType": { "type": "string", "description": "e.g., 'varchar(255)', 'uuid', 'integer', 'text', 'timestamp_with_timezone'" },
+        "isNullable": { "type": "boolean", "default": false },
+        "isUnique": { "type": "boolean", "default": false },
+        "relation": {
+          "type": "object",
+          "properties": {
+            "type": { "enum": ["one-to-one", "one-to-many", "many-to-one", "many-to-many"] },
+            "targetEntity": { "type": "string", "description": "The name of the target schema (e.g., 'UserEntity')" },
+            "mappedBy": { "type": "string", "description": "For one-to-many, the field in the target entity that owns the relation." },
+            "joinColumn": { "type": "string", "description": "For many-to-one or one-to-one, the name of the foreign key column." }
+          },
+          "required": ["type", "targetEntity"]
+        }
+      }
+    },
+    "Service": {
+      "type": "object",
+      "description": "A service (e.g., UserService) containing business operations.",
+      "properties": {
+        "description": { "type": "string" },
+        "operations": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/ServiceOperation"
+          }
+        }
+      }
+    },
+    "ServiceOperation": {
+      "type": "object",
+      "description": "A single business operation (e.g., createUser).",
+      "properties": {
+        "description": { "type": "string" },
+        "parameters": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string" },
+              "in": { "type": "string", "description": "e.g., 'body', 'param'" },
+              "schema": { "type": "object" }
+            },
+            "required": ["name", "schema"]
+          }
+        },
+        "returnType": { "type": "object" },
+        "emitsEvents": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "DDD: List of Domain Events this operation can publish."
+        },
+        "x-business-logic": {
+          "$ref": "#/definitions/BusinessLogicFlow"
+        }
+      },
+      "required": ["description", "parameters", "returnType", "x-business-logic"]
+    },
+    "BusinessLogicFlow": {
+      "type": "object",
+      "properties": {
+        "description": { "type": "string" },
+        "steps": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/LogicStep" }
+        }
+      },
+      "required": ["steps"]
+    },
+    "LogicStep": {
+      "description": "A single, atomic step in a business logic flow. Use `oneOf` to select the step type.",
+      "oneOf": [
+        { "$ref": "#/definitions/ValidationStep" },
+        { "$ref": "#/definitions/DecisionStep" },
+        { "$ref": "#/definitions/MappingStep" },
+        { "$ref": "#/definitions/PersistenceCallStep" },
+        { "$ref": "#/definitions/DataTransformationStep" },
+        { "$ref": "#/definitions/DomainServiceCallStep" },
+        { "$ref": "#/definitions/PublishEventStep" },
+        { "$ref": "#/definitions/ThrowStep" },
+        { "$ref": "#/definitions/ReturnStep" }
+      ]
+    },
+    "LogicStepBase": {
+      "type": "object",
+      "properties": {
+        "type": { "type": "string" },
+        "description": { "type": "string" },
+        "variable": { "type": "string", "description": "Name of the variable to store the result of this step." }
+      },
+      "required": ["type", "description"]
+    },
+    "ValidationStep": {
+      "allOf": [
+        { "$ref": "#/definitions/LogicStepBase" },
+        {
+          "properties": {
+            "type": { "const": "validation" },
+            "target": { "type": "string", "description": "The variable to validate." },
+            "rules": { "type": "array", "items": { "type": "object" } }
+          },
+          "required": ["target", "rules"]
+        }
+      ]
+    },
+    "DecisionStep": {
+      "allOf": [
+        { "$ref": "#/definitions/LogicStepBase" },
+        {
+          "properties": {
+            "type": { "const": "decision" },
+            "condition": { "type": "object" },
+            "ifTrue": { "type": "array", "items": { "$ref": "#/definitions/LogicStep" } },
+            "ifFalse": { "type": "array", "items": { "$ref": "#/definitions/LogicStep" } }
+          },
+          "required": ["condition", "ifTrue"]
+        }
+      ]
+    },
+    "MappingStep": {
+      "allOf": [
+        { "$ref": "#/definitions/LogicStepBase" },
+        {
+          "properties": {
+            "type": { "const": "mapping" },
+            "source": { "type": "string" },
+            "targetSchema": { "type": "object" },
+            "fieldMappings": { "type": "object" }
+          },
+          "required": ["source", "targetSchema"]
+        }
+      ]
+    },
+    "PersistenceCallStep": {
+      "allOf": [
+        { "$ref": "#/definitions/LogicStepBase" },
+        {
+          "properties": {
+            "type": { "const": "persistence-call" },
+            "repository": { "type": "string", "description": "DDD: The Repository to use." },
+            "method": { "type": "string" },
+            "parameters": { "type": "array", "items": { "type": "string" } }
+          },
+          "required": ["repository", "method"]
+        }
+      ]
+    },
+    "DataTransformationStep": {
+      "allOf": [
+        { "$ref": "#/definitions/LogicStepBase" },
+        {
+          "properties": {
+            "type": { "const": "data-transformation" },
+            "method": { "type": "string", "description": "The transformation function to call." },
+            "parameters": { "type": "array", "items": { "type": "string" } }
+          },
+          "required": ["method", "parameters", "variable"]
+        }
+      ]
+    },
+    "DomainServiceCallStep": {
+      "allOf": [
+        { "$ref": "#/definitions/LogicStepBase" },
+        {
+          "properties": {
+            "type": { "const": "domain-service-call" },
+            "service": { "type": "string", "description": "DDD: The Domain Service to call." },
+            "method": { "type": "string" },
+            "parameters": { "type": "array", "items": { "type": "string" } }
+          },
+          "required": ["service", "method"]
+        }
+      ]
+    },
+    "PublishEventStep": {
+      "allOf": [
+        { "$ref": "#/definitions/LogicStepBase" },
+        {
+          "properties": {
+            "type": { "const": "publish-event" },
+            "eventName": { "type": "string", "description": "DDD: The Domain Event to publish." },
+            "payload": { "type": "string", "description": "Variable holding the event payload." }
+          },
+          "required": ["eventName", "payload"]
+        }
+      ]
+    },
+    "ThrowStep": {
+      "allOf": [
+        { "$ref": "#/definitions/LogicStepBase" },
+        {
+          "properties": {
+            "type": { "const": "throw" },
+            "exception": { "type": "string" },
+            "message": { "type": "string" }
+          },
+          "required": ["exception"]
+        }
+      ]
+    },
+    "ReturnStep": {
+      "allOf": [
+        { "$ref": "#/definitions/LogicStepBase" },
+        {
+          "properties": {
+            "type": { "const": "return" },
+            "value": { "type": "string", "description": "The variable to return." }
+          }
+        }
+      ]
+    }
+  }
+}

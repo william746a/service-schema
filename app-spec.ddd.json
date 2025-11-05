@@ -1,0 +1,241 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "User Service Application Logic (V2 - DDD)",
+    "version": "1.0.0",
+    "description": "Specification for an application managing Users, including explicit DDD concepts."
+  },
+  "x-ddd": {
+    "boundedContext": "UserManagement"
+  },
+  "paths": {
+    "/users": {
+      "post": {
+        "summary": "Create a new user",
+        "description": "API endpoint to create a new user. The business logic is defined in 'x-services'.",
+        "operationId": "apiCreateUser",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserCreateDTO"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "User created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserResponseDTO"
+                }
+              }
+            }
+          },
+          "400": { "description": "Invalid input" },
+          "409": { "description": "User with this email already exists" }
+        },
+        "x-service-operation": "UserService.createUser"
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "UserCreateDTO": {
+        "type": "object",
+        "description": "Data Transfer Object for creating a new user.",
+        "properties": {
+          "email": { "type": "string", "format": "email" },
+          "password": { "type": "string", "minLength": 8 },
+          "displayName": { "type": "string", "maxLength": 50 }
+        },
+        "required": ["email", "password", "displayName"]
+      },
+      "UserResponseDTO": {
+        "type": "object",
+        "description": "Data Transfer Object for returning user data.",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "email": { "type": "string", "format": "email" },
+          "displayName": { "type": "string" },
+          "createdAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "UserEmailVO": {
+        "type": "object",
+        "description": "A Value Object representing a validated user email.",
+        "x-ddd": {
+          "isValueObject": true
+        },
+        "properties": {
+          "value": { "type": "string", "format": "email" }
+        }
+      },
+      "UserEntity": {
+        "type": "object",
+        "description": "The persistence model for a User. This is the Aggregate Root.",
+        "x-persistence": {
+          "isEntity": true,
+          "tableName": "users",
+          "isAggregateRoot": true
+        },
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "x-persistence": {
+              "isPrimaryKey": true,
+              "columnName": "user_id",
+              "dataType": "uuid"
+            }
+          },
+          "email": {
+            "type": "string",
+            "x-persistence": {
+              "columnName": "user_email",
+              "dataType": "varchar(255)",
+              "isUnique": true,
+              "isNullable": false
+            }
+          },
+          "passwordHash": {
+            "type": "string",
+            "x-persistence": {
+              "columnName": "password_hash",
+              "dataType": "varchar(255)",
+              "isNullable": false
+            }
+          },
+          "displayName": {
+            "type": "string",
+            "x-persistence": {
+              "columnName": "display_name",
+              "dataType": "varchar(50)"
+            }
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "x-persistence": {
+              "columnName": "created_at",
+              "dataType": "timestamp_with_timezone"
+            }
+          }
+        }
+      }
+    }
+  },
+  "x-services": {
+    "UserService": {
+      "description": "Application Service for user-related operations.",
+      "operations": {
+        "createUser": {
+          "description": "Validates, persists, and returns a new user.",
+          "parameters": [
+            {
+              "name": "userDTO",
+              "in": "body",
+              "schema": {
+                "$ref": "#/components/schemas/UserCreateDTO"
+              }
+            }
+          ],
+          "returnType": {
+            "$ref": "#/components/schemas/UserResponseDTO"
+          },
+          "emitsEvents": ["UserCreatedEvent"],
+          "x-business-logic": {
+            "description": "Logic flow for creating a new user.",
+            "steps": [
+              {
+                "type": "validation",
+                "description": "Validate the input DTO.",
+                "target": "userDTO",
+                "rules": [
+                  { "field": "email", "check": "isEmail" },
+                  { "field": "password", "check": "minLength:8" }
+                ]
+              },
+              {
+                "type": "decision",
+                "description": "Check if user with this email already exists.",
+                "condition": {
+                  "type": "persistence-check",
+                  "repository": "UserRepository",
+                  "method": "existsByEmail",
+                  "parameters": ["userDTO.email"]
+                },
+                "ifTrue": [
+                  {
+                    "type": "throw",
+                    "exception": "ConflictException",
+                    "message": "A user with this email already exists."
+                  }
+                ]
+              },
+              {
+                "type": "domain-service-call",
+                "description": "Hash the user's password using the security service.",
+                "variable": "hashedPassword",
+                "service": "PasswordSecurityService",
+                "method": "hashPassword",
+                "parameters": ["userDTO.password"]
+              },
+              {
+                "type": "mapping",
+                "description": "Map DTO to UserEntity for persistence.",
+                "variable": "newUserEntity",
+                "source": "userDTO",
+                "targetSchema": { "$ref": "#/components/schemas/UserEntity" },
+                "fieldMappings": {
+                  "passwordHash": "hashedPassword",
+                  "createdAt": "now()"
+                }
+              },
+              {
+                "type": "persistence-call",
+                "description": "Save the new entity using its Repository.",
+                "variable": "savedUser",
+                "repository": "UserRepository",
+                "method": "save",
+                "parameters": ["newUserEntity"]
+              },
+              {
+                "type": "mapping",
+                "description": "Create event payload from saved user.",
+                "variable": "eventPayload",
+                "source": "savedUser",
+                "targetSchema": {
+                  "type": "object",
+                  "properties": { "userId": { "type": "string" }, "email": { "type": "string" } }
+                },
+                "fieldMappings": { "userId": "id", "email": "email" }
+              },
+              {
+                "type": "publish-event",
+                "description": "Publish the UserCreatedEvent.",
+                "eventName": "UserCreatedEvent",
+                "payload": "eventPayload"
+              },
+              {
+                "type": "mapping",
+                "description": "Map the saved entity back to a response DTO.",
+                "variable": "responseDTO",
+                "source": "savedUser",
+                "targetSchema": { "$ref": "#/components/schemas/UserResponseDTO" }
+              },
+              {
+                "type": "return",
+                "description": "Return the new DTO.",
+                "value": "responseDTO"
+              }
+            ]
+          }
+        }
+      }
+    }
+  }
+}

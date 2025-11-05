@@ -1,0 +1,132 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Application Business Logic Specification (V1)",
+  "description": "A schema that extends OpenAPI 3.0 to include definitions for business logic, services, and persistence.",
+  "type": "object",
+  "allOf": [
+    { "$ref": "https://spec.openapis.org/oas/v3.0/schema/2021-09-28" }
+  ],
+  "properties": {
+    "components": {
+      "properties": {
+        "schemas": {
+          "additionalProperties": {
+            "properties": {
+              "x-persistence": {
+                "$ref": "#/definitions/PersistenceInfo"
+              },
+              "properties": {
+                "additionalProperties": {
+                  "properties": {
+                    "x-persistence": {
+                      "$ref": "#/definitions/FieldPersistenceInfo"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "x-services": {
+      "type": "object",
+      "description": "Container for service definitions, which hold business logic.",
+      "additionalProperties": {
+        "$ref": "#/definitions/Service"
+      }
+    }
+  },
+  "definitions": {
+    "PersistenceInfo": {
+      "type": "object",
+      "description": "Entity-level persistence information.",
+      "properties": {
+        "isEntity": { "type": "boolean", "const": true },
+        "tableName": { "type": "string", "description": "The name of the database table." }
+      },
+      "required": ["isEntity", "tableName"]
+    },
+    "FieldPersistenceInfo": {
+      "type": "object",
+      "description": "Field-level persistence information.",
+      "properties": {
+        "isPrimaryKey": { "type": "boolean" },
+        "columnName": { "type": "string" },
+        "dataType": { "type": "string", "description": "e.g., 'varchar(255)', 'uuid', 'integer', 'text', 'timestamp_with_timezone'" },
+        "isNullable": { "type": "boolean", "default": false },
+        "isUnique": { "type": "boolean", "default": false },
+        "relation": {
+          "type": "object",
+          "properties": {
+            "type": { "enum": ["one-to-one", "one-to-many", "many-to-one", "many-to-many"] },
+            "targetEntity": { "type": "string", "description": "The name of the target schema (e.g., 'UserEntity')" },
+            "mappedBy": { "type": "string", "description": "For one-to-many, the field in the target entity that owns the relation." },
+            "joinColumn": { "type": "string", "description": "For many-to-one or one-to-one, the name of the foreign key column." }
+          },
+          "required": ["type", "targetEntity"]
+        }
+      }
+    },
+    "Service": {
+      "type": "object",
+      "description": "A service (e.g., UserService) containing business operations.",
+      "properties": {
+        "description": { "type": "string" },
+        "operations": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/ServiceOperation"
+          }
+        }
+      }
+    },
+    "ServiceOperation": {
+      "type": "object",
+      "description": "A single business operation (e.g., createUser).",
+      "properties": {
+        "description": { "type": "string" },
+        "parameters": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string" },
+              "in": { "type": "string", "description": "e.g., 'body', 'param'" },
+              "schema": { "type": "object" }
+            },
+            "required": ["name", "schema"]
+          }
+        },
+        "returnType": { "type": "object" },
+        "x-business-logic": {
+          "$ref": "#/definitions/BusinessLogicFlow"
+        }
+      },
+      "required": ["description", "parameters", "returnType", "x-business-logic"]
+    },
+    "BusinessLogicFlow": {
+      "type": "object",
+      "properties": {
+        "description": { "type": "string" },
+        "steps": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/LogicStep" }
+        }
+      },
+      "required": ["steps"]
+    },
+    "LogicStep": {
+      "type": "object",
+      "description": "A single, atomic step in a business logic flow.",
+      "properties": {
+        "type": {
+          "enum": ["validation", "decision", "mapping", "persistence-call", "data-transformation", "throw", "return"]
+        },
+        "description": { "type": "string" },
+        "variable": { "type": "string", "description": "Name of the variable to store the result of this step." }
+      },
+      "required": ["type", "description"]
+    }
+  }
+}
