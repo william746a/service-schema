@@ -1,0 +1,50 @@
+# Default .gitignore for this repository
+
+# --- OS-specific junk ---
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- IDE / Editor ---
+.idea/
+.vscode/
+*.iml
+
+# --- Node / JS tooling ---
+node_modules/
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# --- Python tooling ---
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+.Python
+.pytest_cache/
+.mypy_cache/
+pytestdebug.log
+
+# --- Build / Output / Coverage ---
+dist/
+build/
+coverage/
+.coverage
+coverage.xml
+.cache/
+
+# --- Logs ---
+*.log
+logs/
+
+# --- Environment / Secrets ---
+.env
+.env.*
+!.env.example
+
+# --- Misc ---
+*.swp
+*.swo
