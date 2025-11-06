@@ -67,5 +67,9 @@ PY
 This project is licensed under the Apache License, Version 2.0.
 See the LICENSE file for details.
 
+## Samples
+
+- User Management Sample (Spring Boot): samples/user-management-svc — Implements the /users POST endpoint and the UserService.createUser flow defined in app-spec.ddd.json using Spring Boot, Spring Data JPA (H2), and basic event publishing.
+
 ---
-Last updated: 2025-11-04 20:35 (local)
+Last updated: 2025-11-04 20:48 (local)
