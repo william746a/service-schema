@@ -1,0 +1,16 @@
+{
+  "name": "node-billing-svc",
+  "version": "1.0.0",
+  "description": "Billing service generated from app-spec.billing.json (Node.js/Express)",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "morgan": "^1.10.0",
+    "uuid": "^9.0.1"
+  }
+}
