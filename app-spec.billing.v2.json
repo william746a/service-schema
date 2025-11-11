@@ -1,0 +1,268 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Billing Service Application Logic (V2 - DDD)",
+    "version": "1.0.0",
+    "description": "Specification for an application managing Customer Billing, including explicit DDD concepts and cross-context links."
+  },
+  "x-ddd": {
+    "boundedContext": "Billing"
+  },
+  "paths": {
+    "/subscriptions/{customerId}": {
+      "get": {
+        "summary": "Get subscriptions for a customer",
+        "description": "API endpoint to retrieve all active subscriptions for a given customer.",
+        "operationId": "apiGetSubscriptions",
+        "parameters": [
+          {
+            "name": "customerId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A list of subscriptions.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SubscriptionEntity"
+                  }
+                }
+              }
+            }
+          },
+          "404": { "description": "Customer not found" }
+        },
+        "x-service-operation": "BillingService.getSubscriptions"
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "CustomerEntity": {
+        "type": "object",
+        "description": "The persistence model for a Customer. This is the Aggregate Root for the Billing context.",
+        "x-persistence": {
+          "isEntity": true,
+          "tableName": "customers",
+          "isAggregateRoot": true
+        },
+        "properties": {
+          "customerId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "This is the User ID from the UserManagement context. It's the primary key here.",
+            "x-persistence": {
+              "isPrimaryKey": true,
+              "columnName": "customer_id",
+              "dataType": "uuid",
+              "crossContextLink": {
+                "boundedContext": "UserManagement",
+                "targetEntity": "UserEntity",
+                "targetField": "id",
+                "relationshipType": "shared-primary-key"
+              }
+            }
+          },
+          "email": {
+            "type": "string",
+            "x-persistence": {
+              "columnName": "email",
+              "dataType": "varchar(255)",
+              "isUnique": true
+            }
+          },
+          "displayName": {
+            "type": "string",
+            "x-persistence": {
+              "columnName": "display_name",
+              "dataType": "varchar(255)"
+            }
+          },
+          "stripeCustomerId": {
+            "type": "string",
+            "description": "The unique customer ID from the Stripe payment system.",
+            "x-persistence": {
+              "columnName": "stripe_customer_id",
+              "dataType": "varchar(255)",
+              "isUnique": true,
+              "isNullable": true
+            }
+          },
+          "subscriptions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SubscriptionEntity"
+            },
+            "x-persistence": {
+              "relation": {
+                "type": "one-to-many",
+                "targetEntity": "SubscriptionEntity",
+                "mappedBy": "customer"
+              }
+            }
+          }
+        }
+      },
+      "SubscriptionEntity": {
+        "type": "object",
+        "description": "A single subscription belonging to a customer.",
+        "x-persistence": {
+          "isEntity": true,
+          "tableName": "subscriptions"
+        },
+        "properties": {
+          "subId": {
+            "type": "string",
+            "format": "uuid",
+            "x-persistence": {
+              "isPrimaryKey": true,
+              "columnName": "sub_id",
+              "dataType": "uuid"
+            }
+          },
+          "status": {
+            "type": "string",
+            "x-persistence": { "dataType": "varchar(50)" }
+          },
+          "planId": {
+            "type": "string",
+            "x-persistence": { "dataType": "varchar(100)" }
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time",
+            "x-persistence": { "dataType": "timestamp_with_timezone" }
+          },
+          "customer": {
+            "$ref": "#/components/schemas/CustomerEntity",
+            "x-persistence": {
+              "relation": {
+                "type": "many-to-one",
+                "targetEntity": "CustomerEntity",
+                "joinColumn": "customer_id"
+              }
+            }
+          }
+        }
+      },
+      "UserCreatedEventDTO": {
+        "type": "object",
+        "description": "Payload of the UserCreatedEvent, consumed from the UserManagement context.",
+        "properties": {
+          "userId": { "type": "string", "format": "uuid" },
+          "email": { "type": "string" },
+          "displayName": { "type": "string" }
+        },
+        "required": ["userId", "email"]
+      }
+    }
+  },
+  "x-services": {
+    "BillingService": {
+      "description": "Application Service for billing and subscription logic.",
+      "operations": {
+        "handleUserCreated": {
+          "description": "Event handler for UserCreatedEvent. Creates a new customer record to mirror the new user.",
+          "parameters": [
+            {
+              "name": "eventDTO",
+              "in": "body",
+              "schema": {
+                "$ref": "#/components/schemas/UserCreatedEventDTO"
+              }
+            }
+          ],
+          "returnType": {
+            "$ref": "#/components/schemas/CustomerEntity"
+          },
+          "x-business-logic": {
+            "description": "Maps the event payload to a new CustomerEntity and saves it.",
+            "steps": [
+              {
+                "type": "mapping",
+                "description": "Map event DTO to a new CustomerEntity.",
+                "variable": "newCustomer",
+                "source": "eventDTO",
+                "targetSchema": { "$ref": "#/components/schemas/CustomerEntity" },
+                "fieldMappings": {
+                  "customerId": "userId",
+                  "email": "email",
+                  "displayName": "displayName"
+                }
+              },
+              {
+                "type": "persistence-call",
+                "description": "Save the new customer to the database.",
+                "variable": "savedCustomer",
+                "repository": "CustomerRepository",
+                "method": "save",
+                "parameters": ["newCustomer"]
+              },
+              {
+                "type": "return",
+                "description": "Return the newly created customer.",
+                "value": "savedCustomer"
+              }
+            ]
+          }
+        },
+        "getSubscriptions": {
+          "description": "Retrieves all subscriptions for a given customer ID.",
+          "parameters": [
+            {
+              "name": "customerId",
+              "in": "param",
+              "schema": { "type": "string", "format": "uuid" }
+            }
+          ],
+          "returnType": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/SubscriptionEntity" }
+          },
+          "x-business-logic": {
+            "description": "Finds the customer and returns their subscriptions.",
+            "steps": [
+              {
+                "type": "persistence-call",
+                "description": "Find the customer (and their subscriptions) by ID.",
+                "variable": "customer",
+                "repository": "CustomerRepository",
+                "method": "findByIdWithSubscriptions",
+                "parameters": ["customerId"]
+              },
+              {
+                "type": "decision",
+                "description": "Check if customer exists.",
+                "condition": {
+                  "type": "check-null",
+                  "variable": "customer"
+                },
+                "ifTrue": [
+                  {
+                    "type": "throw",
+                    "exception": "NotFoundException",
+                    "message": "Customer not found."
+                  }
+                ]
+              },
+              {
+                "type": "return",
+                "description": "Return the list of subscriptions.",
+                "value": "customer.subscriptions"
+              }
+            ]
+          }
+        }
+      }
+    }
+  }
+}

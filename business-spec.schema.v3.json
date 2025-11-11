@@ -1,0 +1,619 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://example.com/business-spec.schema.ddd.v2.json",
+  "title": "Business Logic Specification (DDD V2)",
+  "description": "Extends OpenAPI 3.0 to include business logic, DDD concepts, and architectural design patterns for code generation.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "https://spec.openapis.org/oas/v3.0/schema/2021-09-28"
+    }
+  ],
+  "properties": {
+    "x-ddd": {
+      "$ref": "#/$defs/DDDInfo"
+    },
+    "components": {
+      "properties": {
+        "schemas": {
+          "type": "object",
+          "additionalProperties": {
+            "allOf": [
+              {
+                "$ref": "https://spec.openapis.org/oas/v3.0/schema/2021-09-28#/$defs/schema"
+              },
+              {
+                "properties": {
+                  "x-persistence": {
+                    "$ref": "#/$defs/PersistenceInfo"
+                  },
+                  "x-ddd": {
+                    "$ref": "#/$defs/DDDSchemaInfo"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    "x-services": {
+      "type": "object",
+      "description": "Defines the application's service layer, separate from API paths.",
+      "additionalProperties": {
+        "$ref": "#/$defs/ServiceContract"
+      }
+    }
+  },
+  "$defs": {
+    "DDDInfo": {
+      "type": "object",
+      "properties": {
+        "boundedContext": {
+          "type": "string",
+          "description": "The name of the Bounded Context this spec describes (e.g., 'UserManagement', 'Billing')."
+        }
+      },
+      "additionalProperties": false
+    },
+    "DDDSchemaInfo": {
+      "type": "object",
+      "properties": {
+        "isValueObject": {
+          "type": "boolean",
+          "description": "True if this schema represents a Value Object."
+        }
+      },
+      "additionalProperties": false
+    },
+    "PersistenceInfo": {
+      "type": "object",
+      "properties": {
+        "isEntity": {
+          "type": "boolean",
+          "description": "True if this schema represents a database entity."
+        },
+        "isAggregateRoot": {
+          "type": "boolean",
+          "description": "True if this entity is the root of an aggregate."
+        },
+        "tableName": {
+          "type": "string",
+          "description": "The physical name of the database table."
+        },
+        "schema": {
+          "type": "string",
+          "description": "The database schema (e.g., 'identity', 'billing')."
+        },
+        "x-design-pattern": {
+          "$ref": "#/$defs/DesignPatternInfo"
+        }
+      },
+      "required": [
+        "isEntity"
+      ]
+    },
+    "FieldPersistenceInfo": {
+      "type": "object",
+      "properties": {
+        "columnName": {
+          "type": "string"
+        },
+        "dataType": {
+          "type": "string",
+          "description": "SQL data type (e.g., 'varchar(255)', 'uuid', 'timestamptz')."
+        },
+        "isPrimaryKey": {
+          "type": "boolean"
+        },
+        "isUnique": {
+          "type": "boolean"
+        },
+        "isForeignKey": {
+          "type": "boolean"
+        },
+        "foreignKey": {
+          "$ref": "#/$defs/ForeignKeyInfo"
+        },
+        "crossContextLink": {
+          "$ref": "#/$defs/ForeignKeyInfo"
+        }
+      }
+    },
+    "ForeignKeyInfo": {
+      "type": "object",
+      "description": "Defines a foreign key relationship to another table.",
+      "properties": {
+        "schema": {
+          "type": "string",
+          "description": "The schema of the referenced table (e.s., 'identity')."
+        },
+        "table": {
+          "type": "string",
+          "description": "The name of the referenced table (e.g., 'users')."
+        },
+        "column": {
+          "type": "string",
+          "description": "The name of the referenced column (e.g., 'user_id')."
+        }
+      },
+      "required": [
+        "table",
+        "column"
+      ]
+    },
+    "ServiceContract": {
+      "type": "object",
+      "description": "Defines a single service (e.g., 'UserService').",
+      "additionalProperties": {
+        "$ref": "#/$defs/ServiceOperation"
+      }
+    },
+    "ServiceOperation": {
+      "type": "object",
+      "description": "A single business operation (e.g., 'createUser').",
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "inputDTO": {
+          "type": "string",
+          "description": "JSON schema $ref to the input DTO (e.g., '#/components/schemas/UserCreateDTO')."
+        },
+        "outputDTO": {
+          "type": "string",
+          "description": "JSON schema $ref to the output DTO (e.g., '#/components/schemas/UserResponseDTO')."
+        },
+        "isEventHandler": {
+          "type": "boolean",
+          "description": "True if this operation is triggered by a domain event, not a direct call."
+        },
+        "emitsEvents": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "List of domain events this operation may publish (e.g., 'UserCreatedEvent')."
+        },
+        "x-design-pattern": {
+          "$ref": "#/$defs/DesignPatternInfo"
+        },
+        "x-business-logic": {
+          "type": "object",
+          "properties": {
+            "steps": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/LogicStep"
+              }
+            }
+          }
+        }
+      }
+    },
+    "LogicStep": {
+      "description": "A single, declarative step in a business logic flow.",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/ValidationStep"
+        },
+        {
+          "$ref": "#/$defs/DecisionStep"
+        },
+        {
+          "$ref": "#/$defs/DataTransformationStep"
+        },
+        {
+          "$ref": "#/$defs/PersistenceCallStep"
+        },
+        {
+          "$ref": "#/$defs/DomainServiceCallStep"
+        },
+        {
+          "$ref": "#/$defs/PublishEventStep"
+        },
+        {
+          "$ref": "#/$defs/FactoryCallStep"
+        },
+        {
+          "$ref": "#/$defs/ReturnStep"
+        }
+      ]
+    },
+    "ValidationStep": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "enum": [
+            "validation"
+          ]
+        },
+        "description": {
+          "type": "string"
+        },
+        "rules": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "field": {
+                "type": "string"
+              },
+              "rule": {
+                "type": "string",
+                "description": "e.g., 'not-empty', 'is-email', 'min-length:8'"
+              },
+              "errorMessage": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "required": [
+        "type"
+      ]
+    },
+    "DecisionStep": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "enum": [
+            "decision"
+          ]
+        },
+        "if": {
+          "type": "string",
+          "description": "A pseudocode condition (e.g., 'userDTO.email ends with @test.com')."
+        },
+        "then": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/LogicStep"
+          }
+        },
+        "else": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/LogicStep"
+          }
+        }
+      },
+      "required": [
+        "type",
+        "if"
+      ]
+    },
+    "DataTransformationStep": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "enum": [
+            "data-transformation"
+          ]
+        },
+        "description": {
+          "type": "string"
+        },
+        "output": {
+          "type": "string",
+          "description": "The variable name to store the result (e.g., 'hashedPassword')."
+        },
+        "expression": {
+          "type": "string",
+          "description": "e.g., 'hash(userDTO.password)'"
+        }
+      },
+      "required": [
+        "type"
+      ]
+    },
+    "MappingStep": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "enum": [
+            "mapping"
+          ]
+        },
+        "variable": {
+          "type": "string",
+          "description": "The name of the new object variable."
+        },
+        "source": {
+          "type": "string",
+          "description": "The source variable (e.g., 'userDTO')."
+        },
+        "targetSchema": {
+          "type": "string",
+          "description": "JSON schema $ref to the target schema (e.g., '#/components/schemas/UserEntity')."
+        },
+        "fieldMappings": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Key/value pairs of { 'targetField': 'sourceField' }."
+        }
+      },
+      "required": [
+        "type",
+        "variable",
+        "source",
+        "targetSchema"
+      ]
+    },
+    "PersistenceCallStep": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "enum": [
+            "persistence-call"
+          ]
+        },
+        "repository": {
+          "type": "string",
+          "description": "e.g., 'UserRepository'"
+        },
+        "method": {
+          "type": "string",
+          "description": "e.g., 'save', 'findByEmail', 'existsByEmail'"
+        },
+        "input": {
+          "type": "string",
+          "description": "The variable to pass to the method."
+        },
+        "output": {
+          "type": "string",
+          "description": "The variable to store the result."
+        }
+      },
+      "required": [
+        "type",
+        "repository",
+        "method"
+      ]
+    },
+    "DomainServiceCallStep": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "enum": [
+            "domain-service-call"
+          ]
+        },
+        "service": {
+          "type": "string",
+          "description": "The domain service to call (e.g., 'PasswordHashingService')."
+        },
+        "method": {
+          "type": "string"
+        },
+        "input": {
+          "type": "string"
+        },
+        "output": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "service",
+        "method"
+      ]
+    },
+    "PublishEventStep": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "enum": [
+            "publish-event"
+          ]
+        },
+        "eventName": {
+          "type": "string"
+        },
+        "payload": {
+          "type": "string",
+          "description": "The variable containing the event payload."
+        }
+      },
+      "required": [
+        "type",
+        "eventName"
+      ]
+    },
+    "FactoryCallStep": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "enum": [
+            "factory-call"
+          ]
+        },
+        "factory": {
+          "type": "string",
+          "description": "e.g., 'CustomerFactory'"
+        },
+        "method": {
+          "type": "string",
+          "description": "e.g., 'createCustomerFromEvent'"
+        },
+        "input": {
+          "type": "string",
+          "description": "The variable to pass to the factory."
+        },
+        "output": {
+          "type": "string",
+          "description": "The variable to store the created aggregate."
+        }
+      },
+      "required": [
+        "type",
+        "factory",
+        "method"
+      ]
+    },
+    "ReturnStep": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "enum": [
+            "return"
+          ]
+        },
+        "variable": {
+          "type": "string",
+          "description": "The variable to return from the operation."
+        }
+      },
+      "required": [
+        "type",
+        "variable"
+      ]
+    },
+    "DesignPatternInfo": {
+      "type": "object",
+      "description": "Defines an architectural design pattern to be used.",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/StatePattern"
+        },
+        {
+          "$ref": "#/$defs/StrategyPattern"
+        },
+        {
+          "$ref": "#/$defs/AdapterPattern"
+        },
+        {
+          "$ref": "#/$defs/FactoryPattern"
+        }
+      ]
+    },
+    "StatePattern": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "enum": [
+            "State"
+          ]
+        },
+        "stateProperty": {
+          "type": "string",
+          "description": "The name of the entity property holding the state (e.g., 'status')."
+        },
+        "interface": {
+          "type": "string",
+          "description": "The name of the State interface (e.g., 'SubscriptionState')."
+        },
+        "states": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "List of concrete state names (e.g., 'Active', 'Cancelled')."
+        }
+      },
+      "required": [
+        "type",
+        "stateProperty",
+        "interface",
+        "states"
+      ]
+    },
+    "StrategyPattern": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "enum": [
+            "Strategy"
+          ]
+        },
+        "interface": {
+          "type": "string",
+          "description": "The name of the Strategy interface (e.g., 'WebhookStrategy')."
+        },
+        "contextProperty": {
+          "type": "string",
+          "description": "The input property used to select the strategy (e.g., 'event.type')."
+        },
+        "strategies": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "The name of the concrete strategy class."
+              },
+              "condition": {
+                "type": "string",
+                "description": "The value or condition that maps to this strategy (e.g., 'invoice.paid')."
+              }
+            },
+            "required": [
+              "name",
+              "condition"
+            ]
+          }
+        }
+      },
+      "required": [
+        "type",
+        "interface",
+        "contextProperty",
+        "strategies"
+      ]
+    },
+    "AdapterPattern": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "enum": [
+            "Adapter"
+          ]
+        },
+        "interface": {
+          "type": "string",
+          "description": "The clean, internal interface (e.g., 'PaymentGateway')."
+        },
+        "adapts": {
+          "type": "string",
+          "description": "The external system being adapted (e.g., 'Stripe API')."
+        },
+        "implementation": {
+          "type": "string",
+          "description": "The concrete adapter class (e.g., 'StripeAdapter')."
+        }
+      },
+      "required": [
+        "type",
+        "interface",
+        "adapts"
+      ]
+    },
+    "FactoryPattern": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "enum": [
+            "Factory"
+          ]
+        },
+        "interface": {
+          "type": "string",
+          "description": "The name of the Factory class (e.g., 'CustomerFactory')."
+        },
+        "creates": {
+          "type": "string",
+          "description": "The $ref of the Aggregate Root it creates (e.g., '#/components/schemas/CustomerEntity')."
+        }
+      },
+      "required": [
+        "type",
+        "interface",
+        "creates"
+      ]
+    }
+  }
+}

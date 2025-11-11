@@ -1,0 +1,421 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Billing Service Specification",
+    "version": "1.0.0"
+  },
+  "x-ddd": {
+    "boundedContext": "Billing"
+  },
+  "paths": {
+    "/subscriptions/{customerId}": {
+      "get": {
+        "summary": "Get subscriptions for a customer",
+        "description": "API endpoint to retrieve all active subscriptions for a given customer.",
+        "operationId": "getSubscriptions",
+        "parameters": [
+          {
+            "name": "customerId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A list of subscriptions.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SubscriptionResponseDTO"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Customer not found"
+          }
+        }
+      }
+    },
+    "/webhooks/stripe": {
+      "post": {
+        "summary": "Handles incoming Stripe webhooks",
+        "operationId": "handleStripeWebhook",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StripeEventDTO"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Webhook processed"
+          }
+        }
+      }
+    }
+  },
+  "x-services": {
+    "BillingService": {
+      "getSubscriptions": {
+        "description": "Retrieves all subscriptions for a given customer ID.",
+        "inputDTO": {
+          "name": "customerId",
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "outputDTO": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/SubscriptionResponseDTO"
+          }
+        },
+        "x-business-logic": {
+          "steps": [
+            {
+              "type": "persistence-call",
+              "repository": "CustomerRepository",
+              "method": "findById",
+              "input": "customerId",
+              "output": "customer"
+            },
+            {
+              "type": "decision",
+              "if": "customer is null",
+              "then": [
+                {
+                  "type": "throw",
+                  "exception": "NotFoundException",
+                  "message": "Customer not found"
+                }
+              ]
+            },
+            {
+              "type": "return",
+              "variable": "customer.subscriptions"
+            }
+          ]
+        }
+      },
+      "handleUserCreated": {
+        "description": "Handles the UserCreatedEvent from the UserManagement context to create a new customer profile.",
+        "isEventHandler": true,
+        "inputDTO": "#/components/schemas/UserCreatedEventDTO",
+        "outputDTO": "#/components/schemas/CustomerDTO",
+        "x-design-pattern": {
+          "type": "Factory",
+          "interface": "CustomerFactory",
+          "creates": "#/components/schemas/CustomerEntity"
+        },
+        "x-business-logic": {
+          "steps": [
+            {
+              "type": "factory-call",
+              "factory": "CustomerFactory",
+              "method": "createCustomerFromEvent",
+              "input": "eventDTO",
+              "output": "newCustomer"
+            },
+            {
+              "type": "persistence-call",
+              "repository": "CustomerRepository",
+              "method": "save",
+              "input": "newCustomer"
+            },
+            {
+              "type": "return",
+              "variable": "newCustomer"
+            }
+          ]
+        }
+      },
+      "createStripeCustomer": {
+        "description": "Creates a new customer in the Stripe payment gateway.",
+        "inputDTO": "#/components/schemas/CustomerDTO",
+        "outputDTO": "#/components/schemas/CustomerDTO",
+        "x-design-pattern": {
+          "type": "Adapter",
+          "interface": "PaymentGateway",
+          "adapts": "Stripe API",
+          "implementation": "StripeAdapter"
+        },
+        "x-business-logic": {
+          "steps": [
+            {
+              "type": "domain-service-call",
+              "service": "PaymentGateway",
+              "method": "createCustomer",
+              "input": "customerDTO",
+              "output": "stripeId"
+            },
+            {
+              "type": "persistence-call",
+              "repository": "CustomerRepository",
+              "method": "findById",
+              "input": "customerDTO.id",
+              "output": "customerToUpdate"
+            },
+            {
+              "type": "data-transformation",
+              "description": "Set the new Stripe ID on the entity",
+              "expression": "customerToUpdate.setStripeId(stripeId)"
+            },
+            {
+              "type": "persistence-call",
+              "repository": "CustomerRepository",
+              "method": "save",
+              "input": "customerToUpdate",
+              "output": "updatedCustomer"
+            },
+            {
+              "type": "return",
+              "variable": "updatedCustomer"
+            }
+          ]
+        }
+      },
+      "handleStripeWebhook": {
+        "description": "Handles incoming Stripe webhooks using a strategy pattern.",
+        "isEventHandler": true,
+        "inputDTO": "#/components/schemas/StripeEventDTO",
+        "x-design-pattern": {
+          "type": "Strategy",
+          "interface": "WebhookStrategy",
+          "contextProperty": "event.type",
+          "strategies": [
+            {
+              "name": "InvoicePaidStrategy",
+              "condition": "invoice.paid"
+            },
+            {
+              "name": "SubscriptionDeletedStrategy",
+              "condition": "customer.subscription.deleted"
+            },
+            {
+              "name": "DefaultStrategy",
+              "condition": "default"
+            }
+          ]
+        },
+        "x-business-logic": {
+          "steps": [
+            {
+              "type": "domain-service-call",
+              "service": "WebhookStrategyFactory",
+              "method": "getStrategy",
+              "input": "event.type",
+              "output": "strategy"
+            },
+            {
+              "type": "domain-service-call",
+              "service": "strategy",
+              "method": "handle",
+              "input": "event.data.object"
+            }
+          ]
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "CustomerEntity": {
+        "type": "object",
+        "x-persistence": {
+          "isEntity": true,
+          "isAggregateRoot": true,
+          "tableName": "customers",
+          "schema": "billing"
+        },
+        "properties": {
+          "customerId": {
+            "type": "string",
+            "format": "uuid",
+            "x-persistence": {
+              "isPrimaryKey": true,
+              "columnName": "customer_id",
+              "dataType": "uuid",
+              "crossContextLink": {
+                "schema": "identity",
+                "table": "users",
+                "column": "user_id"
+              }
+            }
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "x-persistence": {
+              "dataType": "varchar(255)",
+              "isUnique": true
+            }
+          },
+          "displayName": {
+            "type": "string",
+            "x-persistence": {
+              "columnName": "display_name",
+              "dataType": "varchar(255)"
+            }
+          },
+          "stripeCustomerId": {
+            "type": "string",
+            "x-persistence": {
+              "columnName": "stripe_customer_id",
+              "dataType": "varchar(255)",
+              "isUnique": true
+            }
+          },
+          "subscriptions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SubscriptionEntity"
+            },
+            "x-persistence": {
+              "relation": {
+                "type": "one-to-many",
+                "targetEntity": "SubscriptionEntity",
+                "mappedBy": "customer"
+              }
+            }
+          }
+        }
+      },
+      "SubscriptionEntity": {
+        "type": "object",
+        "x-persistence": {
+          "isEntity": true,
+          "tableName": "subscriptions",
+          "schema": "billing",
+          "x-design-pattern": {
+            "type": "State",
+            "stateProperty": "status",
+            "interface": "SubscriptionState",
+            "states": [
+              "Active",
+              "Cancelled",
+              "PastDue"
+            ]
+          }
+        },
+        "properties": {
+          "subId": {
+            "type": "string",
+            "format": "uuid",
+            "x-persistence": {
+              "isPrimaryKey": true,
+              "columnName": "sub_id",
+              "dataType": "uuid"
+            }
+          },
+          "status": {
+            "type": "string",
+            "x-persistence": {
+              "dataType": "varchar(50)"
+            }
+          },
+          "planId": {
+            "type": "string",
+            "x-persistence": {
+              "dataType": "varchar(100)"
+            }
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time",
+            "x-persistence": {
+              "dataType": "timestamp_with_timezone"
+            }
+          },
+          "customer": {
+            "$ref": "#/components/schemas/CustomerEntity",
+            "x-persistence": {
+              "relation": {
+                "type": "many-to-one",
+                "targetEntity": "CustomerEntity",
+                "joinColumn": "customer_id"
+              }
+            }
+          }
+        }
+      },
+      "SubscriptionResponseDTO": {
+        "type": "object",
+        "properties": {
+          "subId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string"
+          },
+          "planId": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "UserCreatedEventDTO": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "displayName": {
+            "type": "string"
+          }
+        }
+      },
+      "CustomerDTO": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "stripeId": {
+            "type": "string"
+          }
+        }
+      },
+      "StripeEventDTO": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "description": "e.g., 'invoice.paid'"
+          },
+          "data": {
+            "type": "object"
+          }
+        }
+      }
+    }
+  }
+}
