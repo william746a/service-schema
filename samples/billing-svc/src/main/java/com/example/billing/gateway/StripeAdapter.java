@@ -6,8 +6,9 @@ import java.util.Map;
 import java.util.UUID;
 
 @Component
-public class StripePaymentGateway {
+public final class StripeAdapter implements PaymentGateway {
 
+    @Override
     public Map<String, Object> createCustomer(final String email, final String displayName) {
         // In a real implementation, call Stripe SDK. Here we mock an ID.
         return Map.of(

@@ -1,6 +1,5 @@
 package com.example.billing.api;
 
-import com.example.billing.service.SubscriptionService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ControllerAdvice;
@@ -11,11 +10,11 @@ import java.util.Map;
 @ControllerAdvice
 public class ApiExceptionHandler {
 
-    @ExceptionHandler(SubscriptionService.NotFoundException.class)
-    public ResponseEntity<Map<String, Object>> handleNotFound(RuntimeException ex) {
-        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<Map<String, Object>> handleBadRequest(final IllegalArgumentException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(Map.of(
-                        "error", "Not Found",
+                        "error", "Bad Request",
                         "message", ex.getMessage()
                 ));
     }

@@ -1,6 +1,7 @@
 package com.example.billing.domain;
 
 import jakarta.persistence.*;
+import java.util.List;
 import java.util.UUID;
 
 @Entity
@@ -20,8 +21,8 @@ public class CustomerEntity {
     @Column(name = "stripe_customer_id", length = 255, unique = true)
     private String stripeCustomerId;
 
-    @OneToOne(mappedBy = "customer", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
-    private SubscriptionEntity subscription;
+    @OneToMany(mappedBy = "customer", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
+    private List<SubscriptionEntity> subscriptions;
 
     protected CustomerEntity() {}
 
@@ -40,7 +41,5 @@ public class CustomerEntity {
     public String getEmail() { return email; }
     public String getDisplayName() { return displayName; }
     public String getStripeCustomerId() { return stripeCustomerId; }
-    public SubscriptionEntity getSubscription() { return subscription; }
-
-    public void setSubscription(final SubscriptionEntity subscription) { this.subscription = subscription; }
+    public List<SubscriptionEntity> getSubscriptions() { return subscriptions; }
 }

@@ -1,10 +1,12 @@
 package com.example.billing.api;
 
 import com.example.billing.dto.SubscriptionResponseDTO;
+import com.example.billing.dto.StripeEventDTO;
 import com.example.billing.service.SubscriptionService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -16,14 +18,14 @@ public class SubscriptionController {
         this.subscriptionService = subscriptionService;
     }
 
-    @GetMapping("/subscriptions/{userId}")
-    public ResponseEntity<SubscriptionResponseDTO> getSubscription(@PathVariable("userId") String userId) {
-        SubscriptionResponseDTO dto = subscriptionService.getSubscriptionByUserId(userId);
-        return ResponseEntity.ok(dto);
+    @GetMapping("/subscriptions/{customerId}")
+    public ResponseEntity<List<SubscriptionResponseDTO>> getSubscriptions(@PathVariable("customerId") String customerId) {
+        List<SubscriptionResponseDTO> dtos = subscriptionService.getSubscriptions(customerId);
+        return ResponseEntity.ok(dtos);
     }
 
     @PostMapping("/webhooks/stripe")
-    public Map<String, Object> handleStripe(@RequestBody Map<String, Object> body) {
-        return subscriptionService.handlePaymentWebhook(body);
+    public Map<String, Object> handleStripe(@RequestBody final StripeEventDTO event) {
+        return subscriptionService.handleStripeWebhook(event);
     }
 }

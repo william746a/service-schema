@@ -4,7 +4,7 @@ import java.time.OffsetDateTime;
 import java.util.UUID;
 
 public record SubscriptionResponseDTO(
-        UUID customerId,
+        UUID subId,
         String status,
         String planId,
         OffsetDateTime expiresAt

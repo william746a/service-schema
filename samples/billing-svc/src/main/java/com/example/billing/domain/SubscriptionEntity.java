@@ -21,7 +21,7 @@ public class SubscriptionEntity {
     @Column(name = "expires_at")
     private OffsetDateTime expiresAt;
 
-    @OneToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "customer_id")
     private CustomerEntity customer;
 
@@ -44,6 +44,4 @@ public class SubscriptionEntity {
     public String getPlanId() { return planId; }
     public OffsetDateTime getExpiresAt() { return expiresAt; }
     public CustomerEntity getCustomer() { return customer; }
-
-    public void setCustomer(final CustomerEntity customer) { this.customer = customer; }
 }

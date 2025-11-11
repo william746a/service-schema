@@ -3,7 +3,7 @@ package com.example.billing.service;
 import com.example.billing.domain.CustomerEntity;
 import com.example.billing.dto.UserCreatedEventDTO;
 import com.example.billing.events.CustomerCreatedEvent;
-import com.example.billing.gateway.StripePaymentGateway;
+import com.example.billing.gateway.PaymentGateway;
 import com.example.billing.repo.CustomerRepository;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
@@ -13,17 +13,20 @@ import java.util.Map;
 import java.util.UUID;
 
 @Service
-public class BillingService {
+public final class BillingService {
 
     private final CustomerRepository customerRepository;
-    private final StripePaymentGateway stripePaymentGateway;
+    private final PaymentGateway paymentGateway;
+    private final CustomerFactory customerFactory;
     private final ApplicationEventPublisher eventPublisher;
 
     public BillingService(final CustomerRepository customerRepository,
-                          final StripePaymentGateway stripePaymentGateway,
+                          final PaymentGateway paymentGateway,
+                          final CustomerFactory customerFactory,
                           final ApplicationEventPublisher eventPublisher) {
         this.customerRepository = customerRepository;
-        this.stripePaymentGateway = stripePaymentGateway;
+        this.paymentGateway = paymentGateway;
+        this.customerFactory = customerFactory;
         this.eventPublisher = eventPublisher;
     }
 
@@ -35,22 +38,22 @@ public class BillingService {
             throw new IllegalArgumentException("email must be valid");
         }
 
-        UUID userId = UUID.fromString(eventDTO.userId());
+        final UUID userId = UUID.fromString(eventDTO.userId());
 
         // exists check
         if (customerRepository.existsByCustomerId(userId)) {
             return Map.of("status", "ignored");
         }
 
-        // domain-service-call: create customer in Stripe
-        Map<String, Object> stripeCustomer = stripePaymentGateway.createCustomer(eventDTO.email(), eventDTO.displayName());
+        // Adapter pattern: create customer in Stripe via PaymentGateway
+        final Map<String, Object> stripeCustomer = paymentGateway.createCustomer(eventDTO.email(), eventDTO.displayName());
+        final String stripeId = (String) stripeCustomer.get("id");
 
-        // mapping to entity
-        String stripeId = (String) stripeCustomer.get("id");
-        CustomerEntity newCustomer = CustomerEntity.of(userId, eventDTO.email(), eventDTO.displayName(), stripeId);
+        // Factory pattern: create aggregate from event
+        final CustomerEntity newCustomer = customerFactory.createCustomerFromEvent(eventDTO, stripeId);
 
         // persist
-        CustomerEntity saved = customerRepository.save(newCustomer);
+        final CustomerEntity saved = customerRepository.save(newCustomer);
 
         // publish event
         eventPublisher.publishEvent(new CustomerCreatedEvent(this, saved.getCustomerId(), saved.getEmail()));
